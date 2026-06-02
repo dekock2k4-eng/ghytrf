@@ -1,0 +1,21 @@
+# ── Core ────────────────────────────────────────────────────────────
+streamlit>=1.38.0
+pandas
+numpy
+openpyxl
+python-dotenv
+requests            # OpenRouter LLM client (engine/llm.py)
+
+# ── Voice transcription (optional, only needed for mic input) ────────
+huggingface_hub     # Whisper via Hugging Face Inference
+sounddevice         # mic capture inside the Excel add-in
+scipy
+
+# ── Excel add-in (optional, only needed for the in-Excel ribbon) ─────
+xlwings
+
+# ── Legacy / fallback LLM (optional) ────────────────────────────────
+google-genai        # used by the old core.parse_command path only
+
+# ── Development ─────────────────────────────────────────────────────
+pytest
