@@ -24,7 +24,6 @@ import os
 import sys
 import json
 import ssl
-import socketserver
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pandas as pd
@@ -354,7 +353,16 @@ def _generate_self_signed(cdir):
 
 def main():
     use_http = "--http" in sys.argv
-    httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    try:
+        httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    except OSError as e:
+        if e.errno in (48, 98):  # address already in use
+            print(f"\n  ⚠  Port {PORT} is already in use — a SheetMind bridge is")
+            print("     probably already running. Use it as-is, or stop it with:")
+            print(f"        pkill -f server.py")
+            print(f"     or run on another port:  SHEETMIND_PORT=8766 ./run_addin.sh\n")
+            return
+        raise
     scheme = "http"
     if not use_http:
         crt, key = _find_certs()

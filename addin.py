@@ -226,13 +226,13 @@ def _os_is_dark() -> bool:
 
 def _palette() -> dict:
     if _os_is_dark():
-        return dict(BG='#0f1115', CARD='#15181e', CARD2='#1b1f27', TXT='#eef1f4',
-                    SUB='#9aa3ad', DIM='#646c77', HAIR='#262b33', ZEBRA='#181b21',
-                    ACCENT='#34d399', ACCENT2='#10b981', INK='#052e22',
+        return dict(BG='#0f1115', CARD='#161a21', CARD2='#1c212a', TXT='#eef1f4',
+                    SUB='#9aa3ad', DIM='#646c77', HAIR='#2a313b', ZEBRA='#191d24',
+                    HILITE='#333b46', ACCENT='#34d399', ACCENT2='#10b981', INK='#052e22',
                     RED='#fb7185', AMB='#fbbf24', HEAD='#ffffff', SUBHEAD='#dffaf0')
-    return dict(BG='#f4f6f4', CARD='#ffffff', CARD2='#f3f5f4', TXT='#10221c',
-                SUB='#566169', DIM='#8b949c', HAIR='#e1e6e2', ZEBRA='#f7f9f8',
-                ACCENT='#059669', ACCENT2='#047857', INK='#ffffff',
+    return dict(BG='#eef1ef', CARD='#ffffff', CARD2='#f3f6f4', TXT='#10221c',
+                SUB='#566169', DIM='#8b949c', HAIR='#dde3df', ZEBRA='#f7f9f8',
+                HILITE='#ffffff', ACCENT='#059669', ACCENT2='#047857', INK='#ffffff',
                 RED='#e11d48', AMB='#b45309', HEAD='#ffffff', SUBHEAD='#eafff5')
 
 
@@ -270,6 +270,10 @@ def _make_window(title):
     root.configure(bg=P['BG'])
     root.attributes('-topmost', True)
     root.resizable(False, False)
+    try:
+        root.attributes('-alpha', 0.985)   # subtle translucency (glass-ish over the desktop)
+    except Exception:
+        pass
     return root, P, _fonts(root)
 
 
@@ -317,11 +321,13 @@ def _btn(parent, text, cmd, P, body, kind='primary'):
 
 
 def _card(parent, P):
-    """A sleek surface 'card' (1px hairline border via an outer frame)."""
+    """A sleek frosted 'card' — hairline border + a bright top edge highlight to
+    evoke a glass panel (true blur isn't possible in native Tk)."""
     import tkinter as tk
     outer = tk.Frame(parent, bg=P['HAIR'])
     inner = tk.Frame(outer, bg=P['CARD'])
     inner.pack(fill='both', expand=True, padx=1, pady=1)
+    tk.Frame(inner, bg=P['HILITE'], height=1).pack(fill='x')  # frosted top highlight
     return outer, inner
 
 

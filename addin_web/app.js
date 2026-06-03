@@ -227,7 +227,8 @@ function addBot(innerEl) {
 }
 function thinkingEl() {
   return el("div", "thinking",
-    `<span class="bar"></span><span class="dots"><span>·</span><span>·</span><span>·</span></span>`);
+    `<span class="orb"></span><span class="tlabel">Thinking</span>` +
+    `<span class="elapsed"></span>`);
 }
 function tableEl(grid, diff) {
   const wrap = el("div", "tbl-wrap");
@@ -331,19 +332,33 @@ function renderPreview(bubble, resp) {
       if (isNarrow()) setView("sheet");              // reveal the result on small panes
     } catch (e) {
       apply.disabled = false; apply.innerHTML = "Apply";
-      toast(e.message || "Apply failed", true);
+      toast(_netMsg(e), true);
     }
     scrollEnd();
   };
 }
 
-/* ---- networking ------------------------------------------------------- */
-async function postJSON(path, body) {
-  const r = await fetch(API + path, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  return r.json();
+/* ---- networking (with timeout so the UI never hangs forever) ---------- */
+async function postJSON(path, body, timeoutMs = 75000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(API + path, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body), signal: ctrl.signal,
+    });
+    if (!r.ok) throw new Error(`bridge HTTP ${r.status}`);
+    return await r.json();
+  } finally {
+    clearTimeout(t);
+  }
+}
+function _netMsg(e) {
+  if (e && e.name === "AbortError")
+    return "That took too long — the model may be busy. Please try again.";
+  if (e && /Failed to fetch|NetworkError|bridge HTTP/i.test(e.message || ""))
+    return "Can't reach the SheetMind bridge. Make sure it's running (./run_addin.sh).";
+  return (e && e.message) || "Something went wrong.";
 }
 
 /* ---- main send -------------------------------------------------------- */
@@ -355,12 +370,22 @@ async function send() {
   cmd.value = ""; autoGrow();
   const { bubble } = addBot(thinkingEl());
 
+  // live elapsed-time readout so a slow model never feels frozen
+  const t0 = Date.now();
+  const timer = setInterval(() => {
+    const e = bubble.querySelector(".elapsed");
+    if (!e) return;
+    const s = (Date.now() - t0) / 1000;
+    e.textContent = s.toFixed(0) + "s";
+    const lbl = bubble.querySelector(".tlabel");
+    if (lbl && s > 8) lbl.textContent = "Still working";
+  }, 250);
+
   try {
     const resp = await postJSON("/api/plan", {
       command: text, columns: state.columns, rows: state.rows,
     });
     if (!resp.ok) {
-      bubble.parentElement.classList.add("bot");
       bubble.className = "bubble err";
       bubble.innerHTML = `<div class="who">SheetMind</div>⚠ ${esc(resp.error || "Something went wrong")}`;
     } else if (resp.kind === "message" || !resp.operations.length) {
@@ -372,8 +397,9 @@ async function send() {
     }
   } catch (e) {
     bubble.className = "bubble err";
-    bubble.innerHTML = `<div class="who">SheetMind</div>⚠ ${esc(e.message || "Bridge error")}`;
+    bubble.innerHTML = `<div class="who">SheetMind</div>⚠ ${esc(_netMsg(e))}`;
   } finally {
+    clearInterval(timer);
     state.busy = false; sendBtn.disabled = false; scrollEnd();
   }
 }
@@ -404,13 +430,16 @@ micBtn.onclick = async () => {
       toast("Transcribing…");
       try {
         const blob = new Blob(chunks, { type: "audio/webm" });
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 45000);
         const r = await fetch(API + "/api/transcribe", {
-          method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: blob,
-        });
+          method: "POST", headers: { "Content-Type": "application/octet-stream" },
+          body: blob, signal: ctrl.signal,
+        }).finally(() => clearTimeout(t));
         const j = await r.json();
         if (j.ok) { cmd.value = j.text; autoGrow(); cmd.focus(); }
         else toast(j.error || "Transcription failed", true);
-      } catch (e) { toast("Transcription failed", true); }
+      } catch (e) { toast(_netMsg(e), true); }
     };
     rec.start(); micBtn.classList.add("recording"); toast("Listening… tap mic to stop");
   } catch (e) { toast("Microphone unavailable here", true); }
@@ -422,9 +451,12 @@ async function loadFile(file) {
   toast("Reading " + file.name + "…");
   try {
     const buf = await file.arrayBuffer();
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 30000);
     const r = await fetch(API + "/api/load", {
-      method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: buf,
-    });
+      method: "POST", headers: { "Content-Type": "application/octet-stream" },
+      body: buf, signal: ctrl.signal,
+    }).finally(() => clearTimeout(t));
     const j = await r.json();
     if (!j.ok) { toast(j.error || "Could not read file", true); return; }
     state.columns = j.columns; state.rows = j.rows; state.filename = file.name;
@@ -432,7 +464,7 @@ async function loadFile(file) {
     showHero(); onSheetReady();
     toast("Loaded " + file.name);
     if (isNarrow()) setView("sheet");   // let them see it loaded
-  } catch (e) { toast("Could not read file", true); }
+  } catch (e) { toast(_netMsg(e), true); }
 }
 
 async function downloadFile() {

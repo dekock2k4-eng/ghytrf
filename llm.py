@@ -101,7 +101,7 @@ def chat(
     """
     key = _api_key()
     url = f"{_base_url()}/chat/completions"
-    timeout = float(os.environ.get("SHEETMIND_LLM_TIMEOUT", "60"))
+    timeout = float(os.environ.get("SHEETMIND_LLM_TIMEOUT", "45"))
     headers = {
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",

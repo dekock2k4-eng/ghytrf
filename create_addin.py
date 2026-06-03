@@ -346,6 +346,18 @@ if __name__ == '__main__':
 
     _install_xlwings_addin()
 
+    # Auto-wrap: removes the "workbook name = Python module" requirement so users
+    # never have to hand-make a <Workbook>.py wrapper.
+    print('\nInstalling auto-wrap import hook...')
+    try:
+        import sysconfig
+        sys.path.insert(0, SCRIPT_DIR)
+        import sheetmind_autowrap
+        pth = sheetmind_autowrap.install_autowrap(sysconfig.get_paths()['purelib'], SCRIPT_DIR)
+        print(f'  Installed: {pth}')
+    except Exception as e:
+        print(f'  (skipped — wrappers can be made with make_wrapper.py: {e})')
+
     print('\nChecking pywin32...')
     have_pywin32 = _try_fix_pywin32()
 
