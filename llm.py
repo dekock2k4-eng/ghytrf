@@ -140,8 +140,14 @@ def chat(
                     break
                 return choices[0].get("message", {}) or {}
 
-            # Transient — retry this model with backoff.
-            if resp.status_code in (429, 500, 502, 503):
+            # Rate-limited / quota exhausted — do NOT retry the same model (that just
+            # burns more of a tight free-tier quota). Move straight to the next model.
+            if resp.status_code == 429:
+                last_err = f"{model}: HTTP 429 (rate limited / daily free quota reached)"
+                break
+
+            # Genuinely transient server errors — retry this model with backoff.
+            if resp.status_code in (500, 502, 503):
                 last_err = f"{model}: HTTP {resp.status_code}"
                 time.sleep(2 ** attempt)
                 continue

@@ -15,7 +15,8 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import engine
-from engine import Plan, dry_run, commit, _build_mask, _eval_formula, _exec_op, _local_plan
+from engine import (Plan, dry_run, commit, _build_mask, _eval_formula, _exec_op,
+                    _local_plan, _sanitize_formulas)
 
 
 @pytest.fixture
@@ -90,12 +91,38 @@ def test_formula_rejects_unsafe(df):
         _eval_formula("__import__('os')", df)
 
 
+def test_formula_excel_style_round(df):
+    # Model often emits Excel-style ROUND/INT — must evaluate, not error.
+    assert _eval_formula("ROUND([Price]*1.1, 0)", df).tolist() == [2.0, 1.0, 3.0, 9.0]
+    assert _eval_formula("INT([Price]*1.5)", df).tolist() == [3.0, 1.0, 4.0, 12.0]
+
+
 # ── operation executors ───────────────────────────────────────────────────
 def test_add_row(df):
     df2, res = _exec_op(df, {"op": "add_row", "values": {"Item": "Glue", "Qty": "three"}})
     assert len(df2) == 5
     assert df2.iloc[-1]["Qty"] == 3          # word-number coercion
     assert res.affected == 1
+
+
+def test_sanitize_formula_leftover():
+    # A stray "=[Qty]*[Price]" string must be evaluated, not persisted as-is.
+    bad = pd.DataFrame({"Qty": [25], "Price": [4], "Total": ["=[Qty]*[Price]"]})
+    clean = _sanitize_formulas(bad)
+    assert clean.at[0, "Total"] == 100
+    assert not str(clean.at[0, "Total"]).startswith("=")
+
+
+def test_add_row_with_formula_value(df):
+    # Formula packed into add_row values must be EVALUATED, not written as a
+    # literal "=[Qty]*[Price]" (which Excel renders as #REF!).
+    df2, res = _exec_op(df, {"op": "add_row",
+                             "values": {"Item": "Glue", "Qty": 25, "Price": 4,
+                                        "Total": "=[Qty]*[Price]"}})
+    assert res.error is None
+    last = df2.iloc[-1]
+    assert last["Total"] == 100              # 25 * 4, computed
+    assert not str(last["Total"]).startswith("=")
 
 
 def test_update_delta(df):
@@ -112,6 +139,18 @@ def test_update_formula(df):
                            "set": {"Price": "=[Price]*2"}})
     assert df2.loc[df2["Item"] == "Marker", "Price"].iloc[0] == 16.0
     assert df2.loc[df2["Item"] == "Eraser", "Price"].iloc[0] == 3.0   # untouched
+
+
+def test_update_int_column_with_fractional_float():
+    """Regression: a 10% bump on an int column must widen it to float, not raise
+    `Invalid value '[...]' for dtype 'int64'` (pandas 2.x lossy-set error)."""
+    intdf = pd.DataFrame({"Item": ["Pen", "Marker"], "Price": [2, 8], "Total": [30, 160]})
+    assert str(intdf["Price"].dtype) == "int64"
+    df2, res = _exec_op(intdf, {"op": "update", "filter": None,
+                                "set": {"Price": "=[Price]*1.1"}})
+    assert res.error is None
+    assert df2["Price"].tolist() == [2.2, 8.8]
+    assert str(df2["Price"].dtype) == "float64"
 
 
 def test_delete_filter(df):

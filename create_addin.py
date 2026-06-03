@@ -136,7 +136,14 @@ def _install_xlwings_addin() -> None:
 
 
 def _try_fix_pywin32() -> bool:
-    """Ensure pywin32 is installed and DLLs registered. Returns True if win32com works."""
+    """Ensure pywin32 is installed and DLLs registered. Returns True if win32com works.
+
+    pywin32 is Windows-only. On macOS/Linux we skip it entirely and let the caller
+    fall back to the cross-platform xlwings template path."""
+    if sys.platform != 'win32':
+        print('  Not on Windows — skipping pywin32 (will use the xlwings template path).')
+        return False
+
     try:
         import win32com.client  # noqa: F401
         return True
@@ -145,15 +152,22 @@ def _try_fix_pywin32() -> bool:
 
     print('  Installing pywin32...')
     import subprocess
-    subprocess.run([sys.executable, '-m', 'pip', 'install', 'pywin32'], check=True)
+    try:
+        subprocess.run([sys.executable, '-m', 'pip', 'install', 'pywin32'], check=True)
+    except Exception as e:  # noqa: BLE001
+        print(f'  Could not install pywin32 ({e}); falling back to template path.')
+        return False
 
     print('  Running pywin32 post-install registration...')
     scripts_dir = os.path.join(os.path.dirname(sys.executable), 'Scripts')
     post_script = os.path.join(scripts_dir, 'pywin32_postinstall.py')
-    if os.path.exists(post_script):
-        subprocess.run([sys.executable, post_script, '-install'], check=False)
-    else:
-        subprocess.run([sys.executable, '-m', 'pywin32_postinstall', '-install'], check=False)
+    try:
+        if os.path.exists(post_script):
+            subprocess.run([sys.executable, post_script, '-install'], check=False)
+        else:
+            subprocess.run([sys.executable, '-m', 'pywin32_postinstall', '-install'], check=False)
+    except Exception:  # noqa: BLE001
+        pass
 
     try:
         import win32com.client  # noqa: F401

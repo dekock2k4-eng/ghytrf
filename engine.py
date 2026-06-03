@@ -233,10 +233,17 @@ def _eval_formula(formula: str, df: pd.DataFrame) -> pd.Series:
     if not _FORMULA_ALLOWED.match(expr):
         raise ValueError(f"Formula contains unsupported characters: {formula!r}")
 
-    safe_funcs = {
+    # Vectorised math functions, exposed in BOTH Excel style (ROUND) and python
+    # style (round) so either phrasing the model emits just works.
+    _fns = {
         "round": np.round, "abs": np.abs, "min": np.minimum, "max": np.maximum,
-        "np": np,
+        "int": np.trunc, "floor": np.floor, "ceil": np.ceil, "ceiling": np.ceil,
+        "sqrt": np.sqrt, "sum": np.add, "trunc": np.trunc, "mod": np.mod,
     }
+    safe_funcs = {"np": np}
+    for k, v in _fns.items():
+        safe_funcs[k] = v
+        safe_funcs[k.upper()] = v
     try:
         result = eval(expr, {"__builtins__": {}}, {**namespace, **safe_funcs})  # noqa: S307
     except Exception as e:
@@ -244,6 +251,43 @@ def _eval_formula(formula: str, df: pd.DataFrame) -> pd.Series:
     if np.isscalar(result):
         result = pd.Series([result] * len(df), index=df.index)
     return result
+
+
+def _sanitize_formulas(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Safety net: ensure no internal "=[Col]" formula DSL ever reaches the saved
+    file. Any such leftover string cell is evaluated to its real value (Excel
+    would otherwise treat the leading '=' as a broken formula → #REF!). Plain
+    Excel formulas like "=B2*C2" (no [brackets]) are left untouched on purpose.
+    """
+    out = None
+    for col in df.columns:
+        # Numeric/bool columns can't hold a formula string — skip for speed.
+        if pd.api.types.is_numeric_dtype(df[col]) or pd.api.types.is_bool_dtype(df[col]):
+            continue
+        # Find offending cells in this column.
+        hits = [idx for idx in df.index
+                if isinstance(df.at[idx, col], str)
+                and df.at[idx, col].strip().startswith("=")
+                and "[" in df.at[idx, col] and "]" in df.at[idx, col]]
+        if not hits:
+            continue
+        if out is None:
+            out = df.copy()
+        # Cast to object so we can write computed numbers into a string column.
+        col_obj = out[col].astype(object)
+        for idx in hits:
+            v = out.at[idx, col]
+            try:
+                col_obj.at[idx] = _clean_num(_eval_formula(v.strip()[1:], out).loc[idx])
+            except Exception:  # noqa: BLE001 — never let a bad formula block a save
+                col_obj.at[idx] = ""
+        # Restore numeric typing where the column is now fully numeric.
+        try:
+            out[col] = pd.to_numeric(col_obj)
+        except (ValueError, TypeError):
+            out[col] = col_obj
+    return out if out is not None else df
 
 
 def _resolve_set_value(raw, df: pd.DataFrame, mask: pd.Series, col: str):
@@ -263,6 +307,32 @@ def _resolve_set_value(raw, df: pd.DataFrame, mask: pd.Series, col: str):
     return _coerce_value(raw)
 
 
+def _safe_assign(df: pd.DataFrame, mask, col: str, value) -> None:
+    """
+    Write `value` into df.loc[mask, col], widening the column's dtype first when
+    the incoming values don't fit it.
+
+    Pandas 2.x raises `Invalid value '[...]' for dtype 'int64'` when you set
+    fractional floats into an integer column — e.g. a 10% price bump turns
+    Price [2,8,4,6] into [2.2,8.8,4.4,6.6]. We upcast the column to float (or
+    object as a last resort for non-numeric values) and retry so the edit
+    succeeds instead of erroring out.
+    """
+    try:
+        df.loc[mask, col] = value
+        return
+    except (TypeError, ValueError):
+        pass
+    widen = "float64" if pd.api.types.is_integer_dtype(df[col]) else object
+    df[col] = df[col].astype(widen)
+    try:
+        df.loc[mask, col] = value
+        return
+    except (TypeError, ValueError):
+        df[col] = df[col].astype(object)
+        df.loc[mask, col] = value
+
+
 # ════════════════════════════════════════════════════════════════════════
 # Operation executor  (pure: takes df, returns new df + OpResult)
 # ════════════════════════════════════════════════════════════════════════
@@ -276,9 +346,23 @@ def _exec_op(df: pd.DataFrame, op: dict) -> tuple[pd.DataFrame, OpResult]:
         if not values:
             return df, OpResult(name, "mutate", "add_row: no values", error="no values provided")
         row = {c: "" for c in cols}
+        formulas = {}          # columns whose value is a "=[..]" formula
         for k, v in values.items():
-            row[_fuzzy_col(k, cols)] = _coerce_value(v)
+            col = _fuzzy_col(k, cols)
+            if isinstance(v, str) and v.strip().startswith("="):
+                formulas[col] = v.strip()[1:]   # defer until the row exists
+            else:
+                row[col] = _coerce_value(v)
         df2 = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+        # Evaluate any formula values against the freshly-added row so the cell
+        # holds a real number — NOT the literal "=[Qty]*[Price]" (Excel would
+        # treat that as a broken formula and show #REF!).
+        for col, expr in formulas.items():
+            try:
+                df2.loc[df2.index[-1], col] = _eval_formula(expr, df2).iloc[-1]
+            except ValueError as e:
+                return df, OpResult(name, "mutate", f"add_row: bad formula for {col}",
+                                    error=str(e))
         return df2, OpResult(name, "mutate", f"Add 1 row: {values}", affected=1)
 
     # ── update / set ─────────────────────────────────────────────────────
@@ -310,7 +394,7 @@ def _exec_op(df: pd.DataFrame, op: dict) -> tuple[pd.DataFrame, OpResult]:
             if col not in df2.columns:
                 return df, OpResult(name, "mutate", f"update: unknown column {col_raw}",
                                     error=f"Column '{col_raw}' not found")
-            df2.loc[mask, col] = _resolve_set_value(val, df2, mask, col)
+            _safe_assign(df2, mask, col, _resolve_set_value(val, df2, mask, col))
         sets = ", ".join(f"{_fuzzy_col(c, cols)}={v}" for c, v in setmap.items())
         return df2, OpResult(name, "mutate",
                              f"Set {sets} where {_describe_filter(filt)}", affected=n)
@@ -501,7 +585,7 @@ def dry_run(plan: Plan, df: pd.DataFrame) -> PreviewResult:
                 return PreviewResult(plan, steps, before=before, after=None, error=res.error)
     except Exception as e:  # noqa: BLE001
         return PreviewResult(plan, steps, before=before, after=None, error=str(e))
-    return PreviewResult(plan, steps, before=before, after=work)
+    return PreviewResult(plan, steps, before=before, after=_sanitize_formulas(work))
 
 
 def commit(plan: Plan, store) -> PreviewResult:
@@ -526,6 +610,7 @@ def commit(plan: Plan, store) -> PreviewResult:
         return PreviewResult(plan, steps, before=df, after=None, error=str(e))
 
     if mutated:
+        work = _sanitize_formulas(work)   # never persist a "=[..]" DSL string
         store._push_history()
         store._df = work
         store.save()   # RuntimeError here propagates to the UI (save failures matter)

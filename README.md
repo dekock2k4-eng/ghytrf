@@ -5,12 +5,17 @@ precise, previewed edits and instant analytics on your Excel files — *"raise e
 electronics price by 10%"*, *"what's my total stock value?"*, *"delete rows where
 quantity is below 5"*, *"add a Total column = Qty × Price"*.
 
-It ships in **two forms** that share one brain:
+It ships in **three forms** that share one brain:
 
 | Form | What it is | Best for |
 |------|------------|----------|
 | 🌐 **Streamlit web app** (`app.py`) | A conversational chat UI in your browser. Upload/create a sheet, talk to it, download the result. | Trying it out, no-Excel workflows, demos |
-| 🧩 **Excel ribbon add-in** (`addin.py`) | A native **SheetMind** tab inside Excel with Run / Voice / Undo / Info buttons that edit the *active sheet in place*. | Power users who live in Excel |
+| ⭐ **Office task-pane add-in** (`addin_web/` + `server.py`) | A **premium web panel inside Excel** — auto dark/light, inline diff preview, voice. Reads & writes the active sheet via Office.js. | The best in-Excel experience (Mac, Windows, web) |
+| 🧩 **xlwings ribbon add-in** (`addin.py`) | Native dialogs inside Excel (legacy path). | Offline/native, Windows power users |
+
+> See [`docs/EXCEL_ADDIN.md`](docs/EXCEL_ADDIN.md) for the task-pane setup. Preview
+> the panel in any browser: `./run_addin.sh --http` →
+> <http://localhost:8765/taskpane.html?demo=1>
 
 ---
 
@@ -205,6 +210,8 @@ dry-run-vs-commit semantics, and the local fast-path parser.
 ## 📚 More docs
 - [`docs/HANDOFF.md`](docs/HANDOFF.md) — what changed vs. the original, how it was
   built, full architecture, and current status / known issues.
+- [`docs/EXCEL_ADDIN.md`](docs/EXCEL_ADDIN.md) — install the in-Excel ribbon add-in
+  (Windows + macOS step-by-step).
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — future scope: features to add next,
   ranked by impact ÷ effort.
 

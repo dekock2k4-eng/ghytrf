@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+           xsi:type="TaskPaneApp">
+
+  <Id>8f3c2a7e-5b21-4d9a-9c1e-6a2f9b4e7d10</Id>
+  <Version>2.0.0.0</Version>
+  <ProviderName>SheetMind</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="SheetMind" />
+  <Description DefaultValue="AI copilot for Excel — talk to your sheet in plain English. Edit, analyse, and ask questions, with a preview before every change." />
+  <IconUrl DefaultValue="https://localhost:8765/assets/icon-64.png" />
+  <HighResolutionIconUrl DefaultValue="https://localhost:8765/assets/icon-128.png" />
+  <SupportUrl DefaultValue="https://localhost:8765/taskpane.html" />
+
+  <Hosts>
+    <Host Name="Workbook" />
+  </Hosts>
+
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://localhost:8765/taskpane.html" />
+  </DefaultSettings>
+
+  <Permissions>ReadWriteDocument</Permissions>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Workbook">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="GetStarted.Title" />
+            <Description resid="GetStarted.Desc" />
+            <LearnMoreUrl resid="Urls.Help" />
+          </GetStarted>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="SheetMind.Group">
+                <Label resid="Group.Label" />
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16" />
+                  <bt:Image size="32" resid="Icon.32" />
+                  <bt:Image size="80" resid="Icon.80" />
+                </Icon>
+                <Control xsi:type="Button" id="SheetMind.Open">
+                  <Label resid="Open.Label" />
+                  <Supertip>
+                    <Title resid="Open.Label" />
+                    <Description resid="Open.Tip" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16" />
+                    <bt:Image size="32" resid="Icon.32" />
+                    <bt:Image size="80" resid="Icon.80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>SheetMindPane</TaskpaneId>
+                    <SourceLocation resid="Urls.Taskpane" />
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon.16" DefaultValue="https://localhost:8765/assets/icon-16.png" />
+        <bt:Image id="Icon.32" DefaultValue="https://localhost:8765/assets/icon-32.png" />
+        <bt:Image id="Icon.80" DefaultValue="https://localhost:8765/assets/icon-80.png" />
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Urls.Taskpane" DefaultValue="https://localhost:8765/taskpane.html" />
+        <bt:Url id="Urls.Help" DefaultValue="https://localhost:8765/taskpane.html" />
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="GetStarted.Title" DefaultValue="SheetMind is ready" />
+        <bt:String id="Group.Label" DefaultValue="SheetMind" />
+        <bt:String id="Open.Label" DefaultValue="Open SheetMind" />
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="GetStarted.Desc" DefaultValue="Click Open SheetMind on the Home tab to talk to your sheet." />
+        <bt:String id="Open.Tip" DefaultValue="Open the SheetMind copilot panel." />
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>
